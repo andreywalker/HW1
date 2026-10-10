@@ -1,4 +1,4 @@
-abstract class User(val userName: String, val userId: String, var password:String) {
+abstract class User(val userName: String, var userId: String, var passwordH:String, val fio: String, val userType: UserType) {
 
     fun changePassword(newPassword:String){
         val oldPassword =CLI.requestInput("Enter the old password")
@@ -6,7 +6,7 @@ abstract class User(val userName: String, val userId: String, var password:Strin
             val newPassword =CLI.requestInput("Enter new password")
             DbManager.updatePassword(newPassword, this)
         }else{
-            CLI.print("Wrong password, try again")
+            CLI.printk("Wrong password, try again")
         }
     }
 
