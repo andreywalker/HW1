@@ -70,11 +70,11 @@ goto fail
 :execute
 @rem Setup the command line
 
-set CLASSPATH=%APP_HOME%\lib\HW1.jar;%APP_HOME%\lib\kotlite-core-0.5.0.jar;%APP_HOME%\lib\kotlin-reflect-1.4.31.jar;%APP_HOME%\lib\kotlin-stdlib-jdk8-1.8.0.jar;%APP_HOME%\lib\kotlinx-serialization-json-jvm-1.0.0.jar;%APP_HOME%\lib\kotlin-stdlib-jdk7-1.8.0.jar;%APP_HOME%\lib\kotlinx-serialization-core-jvm-1.0.0.jar;%APP_HOME%\lib\kotlin-stdlib-2.3.21.jar;%APP_HOME%\lib\sqlite-jdbc-3.34.0.jar;%APP_HOME%\lib\annotations-13.0.jar
+set CLASSPATH=%APP_HOME%\lib\HW1.jar;%APP_HOME%\lib\kotlin-stdlib-2.3.21.jar;%APP_HOME%\lib\sqlite-jdbc-3.53.4.0.jar;%APP_HOME%\lib\jline-3.29.0.jar;%APP_HOME%\lib\annotations-13.0.jar
 
 
 @rem Execute HW1
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %H_W1_OPTS%  -classpath "%CLASSPATH%"  %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %H_W1_OPTS%  -classpath "%CLASSPATH%" MainKt %*
 
 :end
 @rem End local scope for the variables with windows NT shell
