@@ -1,187 +1,107 @@
 
-import AuthResponse.*
-import org.sqlite.core.DB
 import kotlin.system.exitProcess
 
 fun main() {
-    CLI.banner("VERY_NEW_WSP")
+    CLI.banner("VERY_NEW_CLI_WSP")
     CLI.printk("For your educational needs")
 
+    var failedAttempts = 0
+
     while (true) {
-        var attempts = 0
-        var returnToAuthentication = false
-        var userName: String? = null
-        var userAuthed: Boolean = false
+        val response = CLI.requestOption(
+            "Authentication",
+            listOf(
+                Triple("Sign in", 's', { login() }),
+                Triple("Register", 'r', { reg() }),
+                Triple("Exit", 'e', { AuthResponse.Exit })
+            ),
+            's'
+        )
 
+        when (response) {
+            is AuthResponse.LoggedIn -> {
+                failedAttempts = 0
+                CLI.printk("Login successful.")
 
-        while (attempts < 3 && !userAuthed) {
-            val result = CLI.requestOption(
-                "Authentication",
-                listOf(
-                    Triple(
-                        "Sign in",
-                        's',
-                        { authenticate() }
-                    ),
-                    Triple(
-                        "Register",
-                        'r',
-                        {
-                            AuthResponse.Failed(reg())
-                        }
-                    ),
-                    Triple(
-                        "Exit",
-                        'e',
-                        {
-                            quit()
-                            //AuthResponse.Failed(AuthResult.EXIT)
-                        }
-                    )
-                ),
-                's'
-            )
+                mainMenu(response.userName)
 
-            when (result) {
-                is AuthResponse.LoggedIn -> {
-                    userName = result.userName
-                    CLI.printk("Login successful.")
-                }
-
-                is AuthResponse.Failed -> {
-                    when (result.reason) {
-                        AuthResult.WRONG_PASSWORD -> {
-                            CLI.printk(
-                                "Wrong password. Please try again."
-                            )
-                            attempts++
-                        }
-
-                        AuthResult.NO_USER -> {
-                            val choice = CLI.requestOption(
-                                "Account not found",
-                                listOf(
-                                    Triple(
-                                        "Try again",
-                                        't',
-                                        { "retry" }
-                                    ),
-                                    Triple(
-                                        "Register",
-                                        'r',
-                                        { "register" }
-                                    ),
-                                    Triple(
-                                        "Exit",
-                                        'e',
-                                        { "exit" }
-                                    )
-                                ),
-                                't'
-                            )
-
-                            when (choice) {
-                                "retry" -> attempts++
-                                "register" -> {
-                                    when (reg()) {
-                                        AuthResult.REG_SUCCESS ->
-                                            CLI.printk(
-                                                "Registration submitted. " +
-                                                        "Awaiting manager approval."
-                                            )
-
-                                        else ->
-                                            CLI.printk(
-                                                "Registration failed."
-                                            )
-                                    }
-                                }
-
-                                "exit" -> return
-                            }
-                        }
-
-                        AuthResult.REG_SUCCESS -> {
-                            CLI.printk(
-                                "Registration submitted. " +
-                                        "Awaiting manager approval."
-                            )
-                        }
-
-                        AuthResult.REG_FAULT -> {
-                            CLI.printk("Registration failed.")
-                        }
-
-                        else -> {
-                            CLI.printk("Authentication failed.")
-                        }
-                    }
-                }
+                CLI.printk("You have been logged out.")
             }
+
+            AuthResponse.UserNotFound -> {
+                failedAttempts++
+                CLI.printk("Account not found.")
+            }
+
+            AuthResponse.WrongPassword -> {
+                failedAttempts++
+                CLI.printk("Wrong password.")
+            }
+
+            AuthResponse.RegistrationSubmitted -> {
+                CLI.printk(
+                    "Registration submitted. Awaiting manager approval."
+                )
+            }
+
+            AuthResponse.RegistrationFailed -> {
+                CLI.printk("Registration failed.")
+            }
+
+            AuthResponse.Exit -> quit()
         }
 
-        if (userAuthed and (!userName.isNullOrBlank())) {
-            mainMenu(userName.toString())
-
-            // When mainMenu returns, the user has logged out.
-            CLI.printk("You have been logged out.")
-            continue
-        }
-
-        if (attempts >= 3) {
-            CLI.printk("Maximum number of attempts reached.")
-            return
+        if (failedAttempts >= 3) {
+            CLI.printk("Maximum number of failed sign-in attempts reached.")
+            quit()
         }
     }
 }
 
-fun authenticate(): AuthResponse {
-    val userName = login()
 
-    return if (userName != null) {
-        AuthResponse.LoggedIn(userName)
-    } else {
-        AuthResponse.Failed(AuthResult.NO_USER)
-    }
-}
 
-fun login(): String? {
+fun login(): AuthResponse {
     CLI.section("Sign in")
 
-    val userName = CLI.requestInput("Username")
+    val userName = CLI.requestInput("Username").trim()
     val password = CLI.requestPassword("Password")
-    val passwordHash = DbManager.hash(password)
 
     if (!DbManager.userExists(userName)) {
-        return null
+        return AuthResponse.UserNotFound
     }
-    if (!DbManager.checkLogin(userName, passwordHash)) {
-        CLI.printk("Wrong password.")
-        return null
-    }
-    println("check login passes")
 
-    return userName
+    val passwordHash = DbManager.hash(password)
+    CLI.printk("'"+password+"'")
+    CLI.printk(passwordHash)
+    if (!DbManager.checkLogin(userName, passwordHash)) {
+        return AuthResponse.WrongPassword
+    }
+
+    return AuthResponse.LoggedIn(userName)
 }
 
-fun reg(): AuthResult {
+
+fun reg(): AuthResponse {
     CLI.section("Registration")
-    val fio: String
+
+    var fio: String
 
     while (true) {
         val input = CLI.requestInput(
             "Full name (surname, name, patronymic)"
         ).trim()
 
-        if (input.matches(Regex("[A-Za-z ]+"))) {
+        if (input.isNotBlank() && input.matches(Regex("[A-Za-z ]+"))) {
             fio = input
             break
         }
 
-        CLI.printk(
-            "Invalid name. Use only Latin letters and spaces."
-        )
+        CLI.printk("Invalid name. Use only Latin letters and spaces.")
     }
+
+    val speciality = CLI.requestInput(
+        "Enter your speciality"
+    ).trim()
 
     val userType = CLI.requestOption(
         "Choose user type",
@@ -197,15 +117,23 @@ fun reg(): AuthResult {
         val password = CLI.requestPassword("Password")
         val confirmation = CLI.requestPassword("Confirm password")
 
-        if (password == confirmation) {
-            DbManager.addUserRequest(fio, userType, password)
-            return AuthResult.REG_SUCCESS
+        if (password.isBlank()) {
+            CLI.printk("Password cannot be empty.")
+        } else if (password != confirmation) {
+            CLI.printk("Passwords do not match. Try again.")
+        } else {
+            return try {
+                DbManager.addUserRequest(fio, userType, password, speciality)
+                AuthResponse.RegistrationSubmitted
+            } catch (e: Exception) {
+                CLI.printk("Could not submit registration.")
+                CLI.printk(e.message.toString())
+                AuthResponse.RegistrationFailed
+            }
         }
-
-        CLI.printk("Passwords do not match. Try again.")
     }
 
-    return AuthResult.REG_FAULT
+    return AuthResponse.RegistrationFailed
 }
 
 fun mainMenu(userName: String) {
@@ -295,6 +223,7 @@ fun userRequest(ur:UserRequest){
                     ur.fio.split(" ")[1][0] +"."+ ur.fio.split(" ")[0]
                 }
             }
+            defaultUsername=defaultUsername.lowercase()
             result = CLI.requestOption("Assign default username? (${defaultUsername})", listOf(Triple("Yes", 'y',{"yes"}),Triple("No", 'n',{"no"}), Triple("Back", 'b',{"back"})),default = 'y')
             when(result){
                 "yes"->{
@@ -342,6 +271,65 @@ fun manageClassses(classs:Classs){
 }
 
 fun createClasss(){
+    CLI.section("Create class")
+    val course:Course = CLI.requestPagedOptions(
+        "Choose the course for the class",
+        DbManager.getCourses(),
+        { course:Course ->course}
+    )
+    val weekday = CLI.requestOption(
+        "Choose week day",
+        listOf(
+            Triple("Monday", 'm', { "Monday" }),
+            Triple("Tuesday", 't', { "Tuesday" }),
+            Triple("Wednesday", 'w', { "Wednesday" }),
+            Triple("Thursday", 'h', { "Thursday" }),
+            Triple("Friday", 'f', { "Friday" }),
+            Triple("Saturday", 's', { "Saturday" }),
+            Triple("Sunday", 'u', { "Sunday" }),
+            Triple(
+                "Exit",
+                'e',
+                {
+                    quit()
+                    //AuthResponse.Failed(AuthResult.EXIT)
+                }
+            )
+        ),
+        'm'
+    )
+    val timeslot = CLI.requestNumberedOption(
+        "Choose timeslot",
+        arrayOf(
+            Pair("8:00-10:00", { "8:00-10:00" }),
+            Pair("10:00-12:00", { "10:00-12:00" }),
+            Pair("12:00-14:00", { "12:00-14:00" }),
+            Pair("14:00-16:00", { "14:00-16:00" }),
+            Pair("16:00-18:00", { "16:00-18:00" }),
+            Pair("18:00-20:00", { "18:00-20:00" }),
+            Pair("20:00-22:00", { "20:00-22:00" })
+        )
+    )
+    val room = CLI.requestInput("Enter room number").toInt()
+
+    val teacherList:Array<Teacher> = DbManager.getTeachersForTime(weekday,timeslot)
+    if (teacherList.isEmpty()){
+        CLI.printk("No teachers available for this time")
+        return
+    }
+    CLI.requestPagedOptions(
+        "Choose the teacher",
+        teacherList,
+        {addTeacherToClass(timeslot=timeslot, weekday=weekday, room=room, courseId=course.courseId, t=it)}
+    )
+    return
+
+}
+
+fun addTeacherToClass(t:Teacher, timeslot:String, weekday:String, room:Int, courseId:String){
+    DbManager.addClass(Classs(teacher = t, weekday = weekday, time = timeslot, room = room, course = DbManager.getCourse(courseId)))
+    CLI.printk("Class added successfully")
+    return
 
 }
 
@@ -363,8 +351,12 @@ fun quit(): Nothing {
     DbManager.close()
     exitProcess(0)
 }
+sealed class AuthResponse {
+    data class LoggedIn(val userName: String) : AuthResponse()
 
-sealed interface AuthResponse {
-    data class LoggedIn(val userName: String) : AuthResponse
-    data class Failed(val reason: AuthResult) : AuthResponse
+    data object UserNotFound : AuthResponse()
+    data object WrongPassword : AuthResponse()
+    data object RegistrationSubmitted : AuthResponse()
+    data object RegistrationFailed : AuthResponse()
+    data object Exit : AuthResponse()
 }

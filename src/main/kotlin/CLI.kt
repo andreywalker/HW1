@@ -176,6 +176,11 @@ object CLI {
 
             val input = readlnOrNull()?.trim()
                 ?: error("Input stream closed")
+            when(input){
+                "e","exit"->{
+                    quit()
+                }
+            }
 
             val number = input.toIntOrNull()
 
@@ -192,12 +197,12 @@ object CLI {
         options: Array<E>,
         action: (E) -> T,
         pageSize: Int = 5
-    ): T? {
+    ): T {
         require(pageSize > 0) {
             "Page size must be positive"
         }
 
-        if (options.isEmpty()) return null
+
 
         var page = 0
         val totalPages = (options.size + pageSize - 1) / pageSize
@@ -247,7 +252,7 @@ object CLI {
                     }
                 }
 
-                "b", "back" -> return null
+                "b", "back" -> return action(options[0])
 
                 else -> {
                     val number = input.toIntOrNull()

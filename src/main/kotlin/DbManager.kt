@@ -1,7 +1,6 @@
 import java.security.MessageDigest
 import java.sql.DriverManager
 import java.time.LocalDate
-import java.util.Date
 import kotlin.use
 
 object DbManager {
@@ -16,14 +15,14 @@ object DbManager {
     fun addClass(c:Classs){
         val insertQuery = """
         INSERT INTO "Class"
-            (classId, time, room, courseId, teacherId)
-        VALUES (?, ?, ?, ?)
+            (classId, timeslot, weekday, room, courseId, teacherId)
+        VALUES (?, ?, ?, ?,?,?)
         """.trimIndent()
         var courseId:String;
         var teacherId:String;
         connection.createStatement().use { statement ->
             val result = statement.executeQuery(
-                "SELECT courseId FROM Course WHERE courseName = '$c.courseName'"
+                "SELECT * FROM Course WHERE courseName = '$c.courseName'"
             )
             courseId = result.getString("courseId")
         }
@@ -38,13 +37,93 @@ object DbManager {
         connection.prepareStatement(insertQuery).use { statement ->
             statement.setString(1, c.classId)
             statement.setString(2, c.time)
-            statement.setInt(3, c.room)
-            statement.setString(4, courseId)
-            statement.setString(4, teacherId)
+            statement.setString(3, c.weekday)
+            statement.setInt(4, c.room)
+            statement.setString(5, courseId)
+            statement.setString(6, teacherId)
             statement.executeUpdate()
         }
 
         //connection.close()
+    }
+
+    fun getTeachersForTime(weekday:String, timeslot:String): Array<Teacher>{
+        var result: String?
+        connection.createStatement().use { statement ->
+            result= statement.executeQuery(
+                "SELECT * FROM Class WHERE weekday = '$weekday' AND timeslot = '$timeslot'"
+            ).getString("teacherId")
+        }
+        var teacherList: Array<Teacher>
+        if(result.isNullOrBlank()){
+        connection.createStatement().use { statement ->
+            teacherList= statement.executeQuery(
+                "SELECT * FROM User WHERE NOT userId = '$result'"
+            ).use { rs ->
+                val requests = mutableListOf<Teacher>()
+
+                while (rs.next()) {
+                    requests.add(
+                        Teacher(
+                            userName = rs.getString("username"),
+                            passwordH = rs.getString("password_h"),
+                            fio = rs.getString("fio"),
+                            userId = rs.getString("userId")
+                        )
+                    )
+                }
+
+                requests.toTypedArray()
+            }
+        }}
+        else{
+            connection.createStatement().use { statement ->
+                teacherList= statement.executeQuery(
+                    "SELECT * FROM User WHERE"
+                ).use { rs ->
+                    val requests = mutableListOf<Teacher>()
+
+                    while (rs.next()) {
+                        requests.add(
+                            Teacher(
+                                userName = rs.getString("username"),
+                                passwordH = rs.getString("password_h"),
+                                fio = rs.getString("fio"),
+                                userId = rs.getString("userId")
+                            )
+                        )
+                    }
+
+                    requests.toTypedArray()
+                }
+            }
+        }
+        return teacherList
+    }
+
+    fun getCourses():Array<Course>{
+        var courseList: Array<Course>
+        connection.createStatement().use { statement ->
+            courseList= statement.executeQuery(
+                "SELECT * FROM Course"
+            ).use { rs ->
+                val requests = mutableListOf<Course>()
+
+                while (rs.next()) {
+                    requests.add(
+                        Course(
+                            courseId = rs.getString("courseId"),
+                            courseName = rs.getString("courseName"),
+                            credits = rs.getInt("credits"),
+                            description = rs.getString("description")
+                        )
+                    )
+                }
+
+                requests.toTypedArray()
+            }
+        }
+        return courseList
     }
 
     fun addCourse(c:Course){
@@ -82,9 +161,36 @@ object DbManager {
         //connection.close()
     }
 
+    fun getCourse(id:String):Course{
+            val query = """
+        SELECT courseId, courseName, credits, description
+        FROM Course
+        WHERE courseId = ?
+    """.trimIndent()
+
+            return connection.prepareStatement(query).use { statement ->
+                statement.setString(1, id)
+
+                statement.executeQuery().use { rs ->
+                    if (rs.next()) {
+                        Course(
+                            courseId = rs.getString("courseId"),
+                            courseName = rs.getString("courseName"),
+                            credits = rs.getInt("credits"),
+                            description = rs.getString("description")
+                        )
+                    } else {
+                        Course("0","empty",0,"")
+                    }
+                }
+            }
+
+    }
+
 
     fun comparePassword(password:String, u: User):Boolean{
         var result: Boolean
+        println(hash(password))
         connection.createStatement().use { statement ->
              result= statement.executeQuery(
                 "SELECT password_h FROM User WHERE userName = '$u.userName'"
@@ -188,7 +294,7 @@ object DbManager {
         connection.prepareStatement(insertQuery).use { statement ->
             statement.setString(1, u.userId)
             statement.setString(2, u.userName)
-            statement.setString(3, hash(u.passwordH))
+            statement.setString(3, u.passwordH)
             statement.setString(4, u.fio)
             statement.setString(5, userType.name)
             statement.setString(6, LocalDate.now().year.toString())
@@ -231,11 +337,11 @@ object DbManager {
         return "$prefix${(lastId + 1).toString().padStart(suffixLength.toInt(), '0')}"
     }
 
-    fun addUserRequest(fio:String, type:UserType, password: String){
+    fun addUserRequest(fio:String, type:UserType, password: String, speciality: String){
         val insertQuery = """
         INSERT INTO "ManagerRequest"
-            (fio, userType, requestStatus, regDate, password_h)
-        VALUES (?, ?, ?,?,?)
+            (fio, userType, requestStatus, date, password_h, speciality)
+        VALUES (?, ?, ?,?,?,?)
         """.trimIndent()
         connection.prepareStatement(insertQuery).use { statement ->
             statement.setString(1, fio)
@@ -243,6 +349,7 @@ object DbManager {
             statement.setString(3, RequestStatus.Pending.name)
             statement.setString(4, LocalDate.now().toString())
             statement.setString(5, hash(password))
+            statement.setString(6, speciality)
             statement.executeUpdate()
         }
     }
@@ -272,7 +379,7 @@ object DbManager {
                             fio= rs.getString("fio"),
                             userType= UserType.valueOf(rs.getString("userType")),
                             requestStatus= RequestStatus.valueOf(rs.getString("requestStatus")),
-                            regDate= LocalDate.parse(rs.getString("regDate")),
+                            regDate= LocalDate.parse(rs.getString("date")),
                             passwordH= rs.getString("password_h"),
                             speciality= rs.getString("speciality")
                         )
@@ -333,4 +440,8 @@ data class UserRequest(
     val requestStatus:RequestStatus,
     val regDate: LocalDate,
     val passwordH: String,
-    val speciality: String)
+    val speciality: String){
+    override fun toString(): String {
+        return "Request from $fio for $userType registration in $speciality speciality."
+    }
+}
